@@ -1,0 +1,16 @@
+
+setp. 0 arith 9 end // sets a predicate compare or bool operation
+
+
+neg. 32 arith 9 end // negates mul -1
+selp. 32 arith 9 end // select between 2 inputs depending on a predicate
+
+
+
+
+mov. 0 arith 9 end // moves value
+cvta. 0 arith 9 end // convert adress
+cvt. 0 arith 9 end // convert
+
+
+div average

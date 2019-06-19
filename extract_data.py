@@ -1,6 +1,5 @@
 import numpy as np
 import math as math
-import collections
 import matplotlib.pyplot as plt
 
 SIZE = 36668
@@ -28,10 +27,10 @@ def read_speedup():
             times[i, (int(cores)-1)] = time
             run_order[i] = name
 
-    speedups = np.ones((SIZE,CORES), dtype=float)
-    for i in range (SIZE):
+    speedups = np.ones((SIZE, CORES), dtype=float)
+    for i in range(SIZE):
         for j in range (1, CORES):
-            speedups[i,j]= times[i,0]/times[i,j]
+            speedups[i, j] = times[i, 0]/times[i, j]
     fin.close()
     return speedups, times, run_order
 
@@ -65,14 +64,9 @@ def read_ptx():
         if ".visible .entry" in line:
             i += 1
             names[i], _ = line[20:].split("4dim")
-        elif line[0] == '\t' and  line[1].isalpha():
-
+        elif line[0] == '\t' and line[1].isalpha():
             instruction = line[1:].split(' ')[0].split('\t')[0]
-            if instruction not in count[i]:
-                count[i][instruction] = 1
-            else:
-                count[i][instruction] += 1
-
+            increment_or_initiate(count[i], instruction, 1)
         line = fin.readline()
     fin.close()
     return count, names
@@ -131,103 +125,55 @@ def draw_histogram(speedups, times, size ):
     plt.show()
 
 
+def sum_by_categories(count):
+    fin = open("alu_weights.txt", "r")
+    lines = fin.readlines()
+
+    sum_count = [dict() for _ in range(14)]
+    remaining = [dict() for _ in range(14)]
+
+    for i in range(14):
+        for key, value in count[i].items():
+            category_found = False
+
+            for line in lines:
+                start, size, category, weight, _ = line.split(' ')
+                if key.startswith(start) and (size == '0' or size in key):
+                    category_found = True
+                    increment_or_initiate(sum_count[i], category, value * int(weight))
+                    break
+            if not category_found:
+                increment_or_initiate(remaining[0], key, value)
+
+    fin.close()
+    return sum_count, remaining
+
+def normalize(sum_count):
+
+    for i in range(14):
+        if 'ld.' in sum_count[i]:
+            sum_count[i]['ld.'] = sum_count[i]['ld.']/sum_count[i]['arith']
+        elif 'st.' in sum_count[i]:
+            sum_count[i]['st.'] = sum_count[i]['st.'] / sum_count[i]['arith']
+        elif 'st.global' in sum_count[i]:
+            sum_count[i]['st.global'] = sum_count[i]['st.global'] / sum_count[i]['arith']
+        elif 'ld.global' in sum_count[i]:
+            sum_count[i]['ld.global'] = sum_count[i]['ld.global'] / sum_count[i]['arith']
+        elif 'ld.global' in sum_count[i]:
+            sum_count[i]['ld.global'] = sum_count[i]['ld.global'] / sum_count[i]['arith']
+
 
 count, names = read_ptx()
 speedups, times, run_order = read_speedup()
 threads, blocks = read_tb()
 
 speedups, times, threads, blocks, run_order = remove_mm_kernel(speedups, times, threads, blocks, run_order)
-
 #draw_histogram(speedups,times, NEW_SIZE)
 
+sum_count, remaining = sum_by_categories(count)
 
+normalize(sum_count)
 
-sum_count = [dict() for _ in range(14)]
-remaining = [dict() for _ in range(14)]
-for i in range(14):
-    for key, value in count[i].items():
-        if 'ld.param' in key and '32' in key:
-            increment_or_initiate(sum_count[i], 'ld.param', value * 32)
-        elif 'ld.param' in key and '64' in key:
-            increment_or_initiate(sum_count[i], 'ld.param', value * 64)
-        elif 'st.param' in key and '32' in key:
-            increment_or_initiate(sum_count[i], 'st.param', value * 32)
-        elif 'st.param' in key and '64' in key:
-            increment_or_initiate(sum_count[i], 'st.param', value * 64)
-        elif 'or.' in key or 'and.' in key or 'not' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 9)
-        elif 'setp.' in key and '32' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 9)
-        elif 'cvta.' in key or 'mov.' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 9)
-        elif 'cvt.' in key or 'mov.' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 9)
-        elif ('mul.' in key or 'add.' in key or 'sub.' in key or 'fma.' in key or 'min.' in key or 'max.' in key or 'neg.' in key or 'selp.' in key or 'shl.' in key or 'abs.' in key) and '32' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 9)
-        elif ('mul.' in key or 'add.' in key or 'sub.' in key or 'fma.' in key or 'min.' in key or 'max.' in key or 'neg.' in key or 'selp.' in key or 'shl.' in key or 'abs.' in key) and '64' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 10)
-        elif 'st.shared' in key and '32' in key:
-            increment_or_initiate(sum_count[i], 'st.shared', value * 32)
-        elif 'st.shared' in key and '64' in key:
-            increment_or_initiate(sum_count[i], 'st.shared', value * 64)
-        elif 'ld.shared' in key and '32' in key:
-            increment_or_initiate(sum_count[i], 'ld.shared', value * 32)
-        elif 'ld.shared' in key and '64' in key:
-            increment_or_initiate(sum_count[i], 'ld.shared', value * 64)
-        elif 'st.global' in key and '8' in key:
-            increment_or_initiate(sum_count[i], 'st.global', value * 8)
-        elif 'st.global' in key and '16' in key:
-            increment_or_initiate(sum_count[i], 'st.global', value * 16)
-        elif 'st.global' in key and '32' in key:
-            increment_or_initiate(sum_count[i], 'st.global', value * 32)
-        elif 'st.global' in key and '64' in key:
-            increment_or_initiate(sum_count[i], 'st.global', value * 64)
-        elif 'ld.global' in key and '16' in key:
-            increment_or_initiate(sum_count[i], 'ld.global', value * 16)
-        elif 'ld.global' in key and '32' in key:
-            increment_or_initiate(sum_count[i], 'ld.global', value * 32)
-        elif 'ld.global' in key and '64' in key:
-            increment_or_initiate(sum_count[i], 'ld.global', value * 64)
-        elif 'bar.' in key:
-            increment_or_initiate(sum_count[i], 'CTA sync', value)
-        elif 'div.s' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 149)
-        elif 'div.u' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 131)
-        elif 'div.' in key and 'f32' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 418)
-        elif 'div.' in key and 'f64' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 445)
-        elif 'mad.' in key and '32' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 9)
-        elif 'mad.' in key and '64' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 10)
-        elif 'rem.u32' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 116)
-        elif 'mul24.' in key or 'mad24.' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 22)
-        elif 'rsqrt.approx' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 40)
-        elif 'sqrt.approx' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 49)
-        elif 'sqrt.' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 432)
-        elif 'ex2.approx' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 49)
-        elif 'rcp.' in key:
-            increment_or_initiate(sum_count[i], 'arith', value * 377)
-        elif 'bra.' in key:
-            increment_or_initiate(sum_count[i], 'branch', value)
-        elif 'ld.' in key and '32' in key:
-            increment_or_initiate(sum_count[i], 'ld.param', value * 32)
-        elif 'ld.' in key and '64' in key:
-            increment_or_initiate(sum_count[i], 'ld.param', value * 64)
-        elif 'st.' in key and '32' in key:
-            increment_or_initiate(sum_count[i], 'st.param', value * 32)
-        elif 'st.' in key and '64' in key:
-            increment_or_initiate(sum_count[i], 'st.param', value * 64)
-        else:
-            (remaining[i])[key] = value
 
 print(remaining)
 for i in range(12):
